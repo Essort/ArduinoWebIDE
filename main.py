@@ -678,7 +678,7 @@ def create_reuse_socket(host: str, port: int):
     s.setblocking(False)
     return s
 
-async def run_server(host="127.0.0.1", port=8001):
+async def run_server(host="127.0.0.1", port=8000):
     sock = create_reuse_socket(host, port)
     config = Config("main:app", host=host, port=port, log_level="info", reload=False)
     server = Server(config=config)
