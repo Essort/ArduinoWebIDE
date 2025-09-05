@@ -2,6 +2,8 @@
 
 A comprehensive web-based Arduino development environment featuring a modern code editor, Arduino CLI integration, real-time serial monitoring, and AI-powered code assistance.
 
+![screen](img/screen.png)
+
 ## Features
 
 ### 🔧 Core IDE Features
