@@ -6,12 +6,16 @@ Main FastAPI application server
 
 import os
 import json
+import socket
 import asyncio
 import subprocess
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
 import uvicorn
+from uvicorn.config import Config
+from uvicorn.server import Server
+import signal
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, UploadFile, File, Form
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -200,6 +204,17 @@ void loop() {
                 await f.write(content)
 
 async def check_arduino_cli() -> bool:
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, _sync_check)
+
+def _sync_check() -> bool:
+    try:
+        p = subprocess.run(["arduino-cli", "version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+        return p.returncode == 0
+    except (FileNotFoundError, PermissionError, OSError):
+        return False
+
+async def check_arduino_cli_linux() -> bool:
     """Check if Arduino CLI is installed"""
     try:
         result = await asyncio.create_subprocess_exec(
@@ -234,6 +249,7 @@ async def get_boards():
         "arduino:avr:uno": "Arduino Uno", 
         "arduino:avr:mega": "Arduino Mega 2560",
         "esp32:esp32:esp32": "ESP32 Dev Module",
+        "esp32:esp32:esp32s3": "ESP32-S3 Module",
         "esp8266:esp8266:nodemcuv2": "ESP8266 NodeMCU"
     }
     return {"boards": boards}
@@ -276,15 +292,15 @@ async def get_templates():
 
 @app.get("/api/sketch/{sketch_name}")
 async def get_sketch(sketch_name: str):
-    """Get content of a specific sketch"""
     sketch_path = SKETCHES_DIR / sketch_name
     if not sketch_path.exists():
         raise HTTPException(status_code=404, detail="Sketch not found")
-    
-    async with aiofiles.open(sketch_path, 'r') as f:
+
+    async with aiofiles.open(sketch_path, 'r', encoding='utf-8') as f:
         content = await f.read()
-    
+
     return {"name": sketch_name, "content": content}
+
 
 @app.get("/api/template/{template_name}")
 async def get_template(template_name: str):
@@ -293,22 +309,23 @@ async def get_template(template_name: str):
     if not template_path.exists():
         raise HTTPException(status_code=404, detail="Template not found")
     
-    async with aiofiles.open(template_path, 'r') as f:
+    async with aiofiles.open(template_path, 'r', encoding='utf-8') as f:
         content = await f.read()
     
     return {"name": template_name, "content": content}
 
 @app.post("/api/sketch/save")
 async def save_sketch(sketch_name: str = Form(...), content: str = Form(...)):
-    """Save an Arduino sketch"""
     if not sketch_name.endswith('.ino'):
         sketch_name += '.ino'
-    
+
+    content = content.replace('\r\n', '\n').replace('\r', '\n')
+
     sketch_path = SKETCHES_DIR / sketch_name
-    
-    async with aiofiles.open(sketch_path, 'w') as f:
+
+    async with aiofiles.open(sketch_path, 'w', encoding='utf-8') as f:
         await f.write(content)
-    
+
     return {"message": f"Sketch '{sketch_name}' saved successfully"}
 
 @app.delete("/api/sketch/{sketch_name}")
@@ -321,41 +338,62 @@ async def delete_sketch(sketch_name: str):
     os.remove(sketch_path)
     return {"message": f"Sketch '{sketch_name}' deleted successfully"}
 
+def _run_compile_sync(cmd, cwd=None):
+    
+    try:
+        proc = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            cwd=cwd,
+            check=False,
+            text=True  # azonnal str-ként kapod az outputot
+        )
+        return proc.returncode, proc.stdout, proc.stderr
+    except (FileNotFoundError, PermissionError, OSError) as e:
+        # egységes hibaválasz, amit az async hívó kezel
+        return 127, "", str(e)
+
 @app.post("/api/compile")
 async def compile_sketch(sketch_name: str = Form(...), board: str = Form(...)):
     """Compile an Arduino sketch"""
     sketch_path = SKETCHES_DIR / sketch_name
+
     if not sketch_path.exists():
         raise HTTPException(status_code=404, detail="Sketch not found")
-    
+
     try:
         # Create temporary directory for compilation
         compile_dir = UPLOADS_DIR / f"compile_{sketch_name}_{datetime.now().timestamp()}"
         compile_dir.mkdir(exist_ok=True)
-        
-        # Copy sketch to compile directory
-        compile_sketch_path = compile_dir / sketch_name
-        async with aiofiles.open(sketch_path, 'r') as src:
+
+        # Ensure the main .ino filename matches the compile_dir name
+        main_ino_name = compile_dir.name + ".ino"
+        compile_main_ino = compile_dir / main_ino_name
+
+        # Read original sketch (can be .ino or a file within a sketch folder)
+        async with aiofiles.open(sketch_path, 'r', encoding='utf-8') as src:
             content = await src.read()
-        async with aiofiles.open(compile_sketch_path, 'w') as dst:
+
+        async with aiofiles.open(compile_main_ino, 'w', encoding='utf-8') as dst:
             await dst.write(content)
-        
-        # Run Arduino CLI compile command
+
+		# Run Arduino CLI: pass the sketch folder (compile_dir)
         cmd = [
-            "arduino-cli", "compile", 
+            "arduino-cli", "compile",
             "--fqbn", board,
             "--output-dir", str(compile_dir),
-            str(compile_sketch_path)
+            str(compile_dir)
         ]
-        
+
         process = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )
-        
+
         stdout, stderr = await process.communicate()
-        
+
         if process.returncode == 0:
             return {
                 "success": True,
@@ -369,7 +407,7 @@ async def compile_sketch(sketch_name: str = Form(...), board: str = Form(...)):
                 "message": "Compilation failed",
                 "error": stderr.decode('utf-8')
             }
-            
+
     except Exception as e:
         return {
             "success": False,
@@ -389,10 +427,15 @@ async def upload_sketch(
         raise HTTPException(status_code=404, detail="Sketch not found")
     
     try:
+
+
         # First compile the sketch
         compile_result = await compile_sketch(sketch_name, board)
+
         if not compile_result["success"]:
             return compile_result
+
+        sketch_path = compile_result["compile_dir"]
         
         # Upload to board
         cmd = [
@@ -402,6 +445,7 @@ async def upload_sketch(
             str(sketch_path)
         ]
         
+
         process = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
@@ -625,12 +669,28 @@ async def get_ollama_models():
     except Exception as e:
         return {"success": False, "error": str(e)}
 
+
+def create_reuse_socket(host: str, port: int):
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    s.bind((host, port))
+    s.listen(2048)
+    s.setblocking(False)
+    return s
+
+async def run_server(host="127.0.0.1", port=8001):
+    sock = create_reuse_socket(host, port)
+    config = Config("main:app", host=host, port=port, log_level="info", reload=False)
+    server = Server(config=config)
+    # serve() visszatér, amikor server.shutdown() meghívódik.
+    await server.serve(sockets=[sock])
+
+def main():
+    try:
+        asyncio.run(run_server())
+    except KeyboardInterrupt:
+        # Ctrl+C esetén tisztán kilép
+        pass
+
 if __name__ == "__main__":
-    print("Starting Arduino Web IDE Server...")
-    uvicorn.run(
-        "main:app", 
-        host="127.0.0.1", 
-        port=8000, 
-        reload=True,
-        log_level="info"
-    )
+    main()
