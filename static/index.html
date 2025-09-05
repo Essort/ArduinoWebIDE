@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arduino Web IDE</title>
+    
+    <!-- CodeMirror CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/codemirror.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/theme/monokai.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/addon/hint/show-hint.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/addon/dialog/dialog.min.css">
+    
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <!-- Main Container -->
+    <div id="app" class="app-container">
+        <!-- Header Toolbar -->
+        <header class="toolbar">
+            <div class="toolbar-left">
+                <div class="logo">
+                    <i class="fas fa-microchip"></i>
+                    <span>Arduino Web IDE</span>
+                </div>
+            </div>
+            
+            <div class="toolbar-center">
+                <div class="board-selector">
+                    <select id="boardSelect" class="board-select">
+                        <option value="">Select Board...</option>
+                    </select>
+                </div>
+                
+                <div class="port-selector">
+                    <select id="portSelect" class="port-select">
+                        <option value="">Select Port...</option>
+                    </select>
+                    <button id="refreshPorts" class="btn-icon" title="Refresh Ports">
+                        <i class="fas fa-sync-alt"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <div class="toolbar-right">
+                <button id="verifyBtn" class="btn-primary" title="Verify/Compile">
+                    <i class="fas fa-check-circle"></i>
+                    Verify
+                </button>
+                <button id="uploadBtn" class="btn-success" title="Upload to Board">
+                    <i class="fas fa-upload"></i>
+                    Upload
+                </button>
+                <button id="serialMonitorBtn" class="btn-secondary" title="Serial Monitor">
+                    <i class="fas fa-terminal"></i>
+                    Serial Monitor
+                </button>
+            </div>
+        </header>
+        
+        <!-- Main Content Area -->
+        <div class="main-content">
+            <!-- Left Sidebar - File Explorer -->
+            <div class="sidebar left-sidebar">
+                <div class="sidebar-header">
+                    <h3><i class="fas fa-folder-open"></i> Files</h3>
+                    <div class="file-actions">
+                        <button id="newSketchBtn" class="btn-icon" title="New Sketch">
+                            <i class="fas fa-plus"></i>
+                        </button>
+                        <button id="saveSketchBtn" class="btn-icon" title="Save Sketch">
+                            <i class="fas fa-save"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="file-explorer">
+                    <div class="file-section">
+                        <h4>Templates</h4>
+                        <ul id="templatesList" class="file-list"></ul>
+                    </div>
+                    
+                    <div class="file-section">
+                        <h4>My Sketches</h4>
+                        <ul id="sketchesList" class="file-list"></ul>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Center Editor Area -->
+            <div class="editor-container">
+                <div class="editor-tabs">
+                    <div class="tab active" id="currentTab">
+                        <span class="tab-name">Untitled.ino</span>
+                        <button class="tab-close">×</button>
+                    </div>
+                </div>
+                
+                <div class="editor-wrapper">
+                    <textarea id="codeEditor">// Welcome to Arduino Web IDE
+// Start coding your Arduino project here!
+
+void setup() {
+  // Initialize serial communication
+  Serial.begin(9600);
+  
+  // Initialize digital pin 13 as an output
+  pinMode(13, OUTPUT);
+}
+
+void loop() {
+  // Your main code here
+  digitalWrite(13, HIGH);   // Turn the LED on
+  delay(1000);              // Wait for a second
+  digitalWrite(13, LOW);    // Turn the LED off
+  delay(1000);              // Wait for a second
+  
+  Serial.println("Hello, Arduino!");
+}</textarea>
+                </div>
+                
+                <!-- Output Panel -->
+                <div class="output-panel">
+                    <div class="output-tabs">
+                        <button class="output-tab active" data-tab="console">Console</button>
+                        <button class="output-tab" data-tab="serial">Serial Monitor</button>
+                    </div>
+                    
+                    <div class="output-content">
+                        <div id="consoleOutput" class="output-section active">
+                            <div class="console-header">
+                                <span>Console Output</span>
+                                <button id="clearConsole" class="btn-icon">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                            <div class="console-content"></div>
+                        </div>
+                        
+                        <div id="serialOutput" class="output-section">
+                            <div class="serial-header">
+                                <span>Serial Monitor</span>
+                                <div class="serial-controls">
+                                    <select id="baudRate" class="baud-select">
+                                        <option value="9600">9600</option>
+                                        <option value="115200">115200</option>
+                                        <option value="57600">57600</option>
+                                        <option value="38400">38400</option>
+                                        <option value="19200">19200</option>
+                                    </select>
+                                    <button id="connectSerial" class="btn-small btn-primary">Connect</button>
+                                    <button id="clearSerial" class="btn-icon">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="serial-content"></div>
+                            <div class="serial-input">
+                                <input type="text" id="serialInput" placeholder="Send to Arduino..." disabled>
+                                <button id="sendSerial" class="btn-small" disabled>
+                                    <i class="fas fa-paper-plane"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Right Sidebar - AI Assistant -->
+            <div class="sidebar right-sidebar">
+                <div class="sidebar-header">
+                    <h3><i class="fas fa-robot"></i> AI Assistant</h3>
+                    <button id="aiToggle" class="btn-icon" title="Toggle AI Panel">
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                </div>
+                
+                <div class="ai-panel">
+                    <div class="ai-tabs">
+                        <button class="ai-tab active" data-tab="generate">Generate</button>
+                        <button class="ai-tab" data-tab="review">Review</button>
+                    </div>
+                    
+                    <!-- Code Generation Panel -->
+                    <div id="generatePanel" class="ai-section active">
+                        <div class="ai-input-area">
+                            <textarea id="aiPrompt" placeholder="Describe what you want to create...\n\nExample:\n- Blink an LED on pin 13\n- Read temperature sensor\n- Control servo motor\n- ESP32 WiFi connection" rows="6"></textarea>
+                            <button id="generateCode" class="btn-primary full-width">
+                                <i class="fas fa-magic"></i>
+                                Generate Code
+                            </button>
+                        </div>
+                        
+                        <div class="ai-output">
+                            <div class="ai-response" id="aiGenerateResponse"></div>
+                        </div>
+                    </div>
+                    
+                    <!-- Code Review Panel -->
+                    <div id="reviewPanel" class="ai-section">
+                        <div class="ai-input-area">
+                            <p class="help-text">Click "Review Current Code" to analyze your Arduino sketch for bugs, optimizations, and best practices.</p>
+                            <button id="reviewCode" class="btn-secondary full-width">
+                                <i class="fas fa-search"></i>
+                                Review Current Code
+                            </button>
+                        </div>
+                        
+                        <div class="ai-output">
+                            <div class="ai-response" id="aiReviewResponse"></div>
+                        </div>
+                    </div>
+                    
+                    <!-- AI Status -->
+                    <div class="ai-status">
+                        <div id="ollamaStatus" class="status-indicator offline">
+                            <i class="fas fa-circle"></i>
+                            <span>Ollama: Checking...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modal for New Sketch -->
+    <div id="newSketchModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Create New Sketch</h3>
+                <button class="modal-close">×</button>
+            </div>
+            <div class="modal-body">
+                <input type="text" id="newSketchName" placeholder="Enter sketch name..." class="modal-input">
+                <div class="modal-actions">
+                    <button id="createSketch" class="btn-primary">Create</button>
+                    <button class="btn-secondary modal-cancel">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="loading-overlay">
+        <div class="loading-spinner">
+            <i class="fas fa-cog fa-spin"></i>
+            <p>Processing...</p>
+        </div>
+    </div>
+    
+    <!-- CodeMirror Scripts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/mode/clike/clike.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/addon/edit/closebrackets.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/addon/edit/matchbrackets.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/addon/hint/show-hint.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/addon/hint/anyword-hint.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/addon/search/searchcursor.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/addon/search/search.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/addon/dialog/dialog.min.js"></script>
+    
+    <!-- Main Application Script -->
+    <script src="/static/app.js"></script>
+</body>
+</html>
